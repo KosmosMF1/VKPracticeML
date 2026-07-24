@@ -1,0 +1,27 @@
+# User-provided images and local agent metadata
+images/
+.agents/
+
+# Python cache
+**/__pycache__/
+*.py[cod]
+
+# Generated dataset
+augmented_images/
+dataset.csv
+
+# Trained models and TensorFlow.js export
+*.h5
+*.keras
+tfjs_model/
+
+# Local inference inputs and outputs at the repository root
+/*.jpg
+/*.jpeg
+/*.png
+
+# Local Python environments and editor files
+.venv/
+venv/
+.vscode/
+.idea/
