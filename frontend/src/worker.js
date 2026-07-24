@@ -1,7 +1,7 @@
 const TFJS_VERSION = '4.20.0';
 importScripts(`https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@${TFJS_VERSION}/dist/tf.min.js`);
 
-const MODEL_INPUT_SIZE = 224;
+const MODEL_INPUT_SIZE = 256;
 const MAX_MEGAPIXELS = 15;
 
 let model = null;
@@ -103,6 +103,7 @@ async function predictCoefficients(bitmap, taskId) {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(bitmap, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
   const imageData = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+  const quality = analyzeImageQuality(imageData);
 
   if (model) {
     return tf.tidy(() => {
@@ -113,11 +114,11 @@ async function predictCoefficients(bitmap, taskId) {
         .expandDims(0);
       const prediction = model.predict(tensor);
       const [brightness, contrast, saturation] = prediction.dataSync();
-      return { brightness, contrast, saturation };
+      return adaptCoefficients({ brightness, contrast, saturation }, quality);
     });
   }
 
-  return heuristicCoefficients(imageData);
+  return heuristicCoefficients(quality);
 }
 
 /**
@@ -127,10 +128,13 @@ async function predictCoefficients(bitmap, taskId) {
  * значений канала приближались к "нормальным" (0.5 / достаточный
  * контраст), а насыщенность оставалась в разумных пределах.
  */
-function heuristicCoefficients(imageData) {
+function analyzeImageQuality(imageData) {
   const { data } = imageData;
   let sum = 0;
+  let sumSquared = 0;
   let sumSat = 0;
+  let darkPixels = 0;
+  let lightPixels = 0;
   const n = data.length / 4;
 
   for (let i = 0; i < data.length; i += 4) {
@@ -139,18 +143,61 @@ function heuristicCoefficients(imageData) {
     const b = data[i + 2] / 255;
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
-    sum += (r + g + b) / 3;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    sum += luminance;
+    sumSquared += luminance * luminance;
     sumSat += max === 0 ? 0 : (max - min) / max;
+    if (luminance < 0.06) darkPixels += 1;
+    if (luminance > 0.94) lightPixels += 1;
   }
 
   const meanBrightness = sum / n;
   const meanSaturation = sumSat / n;
+  const contrast = Math.sqrt(Math.max(0, sumSquared / n - meanBrightness ** 2));
 
-  const brightness = clamp(0.5 / Math.max(meanBrightness, 0.05), 0.7, 1.4);
-  const contrast = 1.1; // лёгкое усиление контраста по умолчанию
-  const saturation = clamp(0.45 / Math.max(meanSaturation, 0.05), 0.9, 1.3);
+  // Нулевое значение означает обычный диапазон, единица — явную проблему.
+  // Пороги консервативны, чтобы не менять хорошие снимки и творческие фото.
+  const brightnessProblem = Math.max(
+    clamp((0.30 - meanBrightness) / 0.20, 0, 1),
+    clamp((meanBrightness - 0.72) / 0.18, 0, 1)
+  );
+  const contrastProblem = Math.max(
+    clamp((0.12 - contrast) / 0.08, 0, 1),
+    clamp((contrast - 0.36) / 0.12, 0, 1)
+  );
+  const clippingProblem = clamp((darkPixels / n + lightPixels / n - 0.16) / 0.28, 0, 1);
+
+  return {
+    meanBrightness,
+    meanSaturation,
+    contrast,
+    severity: Math.max(brightnessProblem, contrastProblem, clippingProblem),
+  };
+}
+
+function heuristicCoefficients(quality) {
+  const brightness = clamp(0.52 / Math.max(quality.meanBrightness, 0.08), 0.55, 1.8);
+  const contrast = clamp(0.23 / Math.max(quality.contrast, 0.08), 0.70, 1.30);
+  const saturation = clamp(0.45 / Math.max(quality.meanSaturation, 0.08), 0.75, 1.25);
 
   return { brightness, contrast, saturation };
+}
+
+function adaptCoefficients(prediction, quality) {
+  const heuristic = heuristicCoefficients(quality);
+
+  // На нормальном фото применяется 25% поправки. Чем очевиднее дефект,
+  // тем больше влияние модели; на экстремальных случаях её страхует гистограмма.
+  const strength = 0.25 + 0.75 * quality.severity;
+  const heuristicWeight = 0.70 * quality.severity;
+  const adjusted = {};
+
+  for (const name of ['brightness', 'contrast', 'saturation']) {
+    const safePrediction = clamp(prediction[name], 0.55, 1.8);
+    const hybrid = safePrediction * (1 - heuristicWeight) + heuristic[name] * heuristicWeight;
+    adjusted[name] = 1 + (hybrid - 1) * strength;
+  }
+  return adjusted;
 }
 
 function clamp(value, min, max) {
