@@ -86,16 +86,17 @@ class PhotoEnhancementSequence(tf.keras.utils.Sequence):
 
 def build_model() -> tf.keras.Model:
     """Собирает замороженную MobileNetV2 и регрессионную голову из трёх ReLU-нейронов."""
-    base_model = tf.keras.applications.MobileNetV2(
-        input_shape=(*IMAGE_SIZE, 3), include_top=False, weights="imagenet"
-    )
-    base_model.trainable = False
-
     inputs = tf.keras.layers.Input(shape=(*IMAGE_SIZE, 3), name="image")
     # Generator выдаёт [0, 1], MobileNetV2 с ImageNet-весами ожидает [-1, 1].
     # Rescaling сериализуется в HDF5 надёжнее, чем выражение с TensorFlow-операциями.
     x = tf.keras.layers.Rescaling(scale=2.0, offset=-1.0, name="mobilenet_preprocessing")(inputs)
-    x = base_model(x, training=False)
+    # input_tensor разворачивает MobileNetV2 в единый Functional-граф. Это важно
+    # для tensorflowjs_converter: вложенная Functional-модель даёт Graph disconnected.
+    base_model = tf.keras.applications.MobileNetV2(
+        input_tensor=x, include_top=False, weights="imagenet"
+    )
+    base_model.trainable = False
+    x = base_model.output
     x = tf.keras.layers.GlobalAveragePooling2D(name="global_average_pooling")(x)
     predictions = tf.keras.layers.Dense(3, activation="relu", name="enhancement_factors")(x)
 
