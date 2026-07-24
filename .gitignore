@@ -25,3 +25,4 @@ tfjs_model/
 venv/
 .vscode/
 .idea/
+backend/best_model.h5
