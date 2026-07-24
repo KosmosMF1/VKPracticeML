@@ -11,7 +11,6 @@ augmented_images/
 dataset.csv
 
 # Trained models and TensorFlow.js export
-*.h5
 *.keras
 tfjs_model/
 
