@@ -9,6 +9,7 @@ images/
 # Generated dataset
 augmented_images/
 dataset.csv
+kaggle_data/
 
 # Trained models and TensorFlow.js export
 *.keras
