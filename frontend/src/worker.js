@@ -172,7 +172,7 @@ function analyzeImageQuality(imageData) {
   // Белые карточки, сканы и логотипы часто имеют намеренно белый фон и
   // контрастные детали. Это не пересвет: глобальная коррекция только портит
   // такой контент, поэтому распознаём его отдельно.
-  const isWhiteBackground = lightRatio > 0.55 && darkRatio > 0.005;
+  const isWhiteBackground = meanBrightness > 0.78 && lightRatio > 0.40;
 
   return {
     meanBrightness,
