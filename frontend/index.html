@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Улучшение изображений в браузере — демо</title>
+<link rel="icon" href="data:," />
+<style>
+  :root{
+    --ink:#151714;
+    --paper:#f6f5f1;
+    --panel:#ffffff;
+    --line:#d9d6cc;
+    --accent:#2f6f4f;
+    --accent-soft:#e7f0ea;
+    --danger:#b3412e;
+    --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); line-height:1.5;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:48px 24px 96px;}
+  header{margin-bottom:36px;}
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 10px;
+  }
+  h1{font-size:28px; margin:0 0 8px; letter-spacing:-0.01em;}
+  .sub{color:#5b5b54; font-size:15px; max-width:560px;}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:24px; margin-bottom:20px;
+  }
+
+  .dropzone{
+    display:block;
+    border:1.5px dashed var(--line); border-radius:8px; padding:36px 20px;
+    text-align:center; cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--accent); background:var(--accent-soft);}
+  .dropzone input{display:none;}
+  .dropzone p{margin:0; font-size:14px; color:#5b5b54;}
+  .dropzone .hint{font-family:var(--mono); font-size:12px; color:#8a877c; margin-top:6px;}
+
+  .status-row{display:flex; align-items:center; gap:12px; margin-top:18px; font-family:var(--mono); font-size:13px;}
+  .status-badge{
+    padding:3px 9px; border-radius:99px; background:var(--accent-soft); color:var(--accent);
+    text-transform:uppercase; letter-spacing:.04em; font-size:11px;
+  }
+  .status-badge.error{background:#f6e4e0; color:var(--danger);}
+  .progress-track{flex:1; height:6px; background:#eceae3; border-radius:99px; overflow:hidden;}
+  .progress-fill{height:100%; background:var(--accent); width:0%; transition:width .2s ease;}
+
+  .images{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:20px;}
+  .images figure{margin:0;}
+  .images img{width:100%; border-radius:8px; border:1px solid var(--line); display:block; background:#eee;}
+  figcaption{font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#8a877c; margin-top:6px;}
+
+  .actions{display:flex; gap:10px; margin-top:18px;}
+  button{
+    font-family:var(--sans); font-size:14px; font-weight:600; border-radius:7px;
+    border:1px solid var(--ink); padding:9px 16px; cursor:pointer; background:var(--ink); color:var(--paper);
+  }
+  button.secondary{background:transparent; color:var(--ink);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+
+  .log{
+    font-family:var(--mono); font-size:12px; color:#5b5b54; max-height:140px; overflow-y:auto;
+    background:#faf9f6; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:16px;
+  }
+  .log div{padding:2px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Frontend · ML в браузере</p>
+    <h1>Улучшение фото: яркость, контраст, цветность</h1>
+    <p class="sub">Модель работает локально в браузере через TensorFlow.js — файл никуда не отправляется. Обработка асинхронна и не блокирует интерфейс.</p>
+  </header>
+
+  <div class="panel">
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.bmp,.heic,.heif" />
+      <p><strong>Перетащите изображение сюда</strong> или нажмите, чтобы выбрать файл</p>
+      <p class="hint">JPG · PNG · HEIC · BMP · до 15 Мпк</p>
+    </label>
+
+    <div class="status-row" id="statusRow" hidden>
+      <span class="status-badge" id="statusBadge">queued</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <span id="progressPct">0%</span>
+    </div>
+
+    <div class="images" id="images" hidden>
+      <figure>
+        <img id="beforeImg" alt="Исходное изображение" />
+        <figcaption>Исходное</figcaption>
+      </figure>
+      <figure>
+        <img id="afterImg" alt="Результат обработки" />
+        <figcaption>Результат</figcaption>
+      </figure>
+    </div>
+
+    <div class="actions" id="actions" hidden>
+      <button id="downloadBtn">Скачать результат</button>
+      <button class="secondary" id="cancelBtn">Отменить</button>
+    </div>
+
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { ImageEnhancerAPI } from './src/api.js';
+
+  const api = new ImageEnhancerAPI();
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const statusRow = document.getElementById('statusRow');
+  const statusBadge = document.getElementById('statusBadge');
+  const progressFill = document.getElementById('progressFill');
+  const progressPct = document.getElementById('progressPct');
+  const imagesBlock = document.getElementById('images');
+  const beforeImg = document.getElementById('beforeImg');
+  const afterImg = document.getElementById('afterImg');
+  const actions = document.getElementById('actions');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const log = document.getElementById('log');
+
+  let currentTaskId = null;
+  let currentResultUrl = null;
+
+  function logLine(text) {
+    const div = document.createElement('div');
+    div.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+    log.prepend(div);
+  }
+
+  ['dragover', 'dragleave', 'drop'].forEach((evt) => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.toggle('drag', evt === 'dragover');
+      if (evt === 'drop' && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  api.addEventListener('statuschange', (e) => {
+    const { taskId, status, progress } = e.detail;
+    if (taskId !== currentTaskId) return;
+
+    statusBadge.textContent = status;
+    statusBadge.classList.toggle('error', status === 'error');
+    progressFill.style.width = `${progress}%`;
+    progressPct.textContent = `${progress}%`;
+    logLine(`статус задачи ${taskId.slice(0, 8)}: ${status} (${progress}%)`);
+
+    if (status === 'done') {
+      finishSuccess(taskId);
+    } else if (status === 'error') {
+      cancelBtn.disabled = true;
+    } else if (status === 'cancelled') {
+      cancelBtn.disabled = true;
+    }
+  });
+
+  async function handleFile(file) {
+    resetUI();
+    beforeImg.src = URL.createObjectURL(file);
+    imagesBlock.hidden = false;
+    statusRow.hidden = false;
+    actions.hidden = false;
+    downloadBtn.disabled = true;
+    cancelBtn.disabled = false;
+
+    try {
+      currentTaskId = await api.submitTask(file);
+      logLine(`задача поставлена: ${currentTaskId}`);
+    } catch (err) {
+      logLine(`ошибка постановки задачи: ${err.message}`);
+      statusBadge.textContent = 'error';
+      statusBadge.classList.add('error');
+    }
+  }
+
+  async function finishSuccess(taskId) {
+    const blob = await api.getResult(taskId);
+    currentResultUrl = URL.createObjectURL(blob);
+    afterImg.src = currentResultUrl;
+    downloadBtn.disabled = false;
+    cancelBtn.disabled = true;
+  }
+
+  downloadBtn.addEventListener('click', () => {
+    if (!currentResultUrl) return;
+    const a = document.createElement('a');
+    a.href = currentResultUrl;
+    a.download = 'enhanced.jpg';
+    a.click();
+  });
+
+  cancelBtn.addEventListener('click', async () => {
+    if (!currentTaskId) return;
+    const { success } = await api.cancelTask(currentTaskId);
+    logLine(success ? 'задача отменена' : 'не удалось отменить (уже завершена)');
+  });
+
+  function resetUI() {
+    progressFill.style.width = '0%';
+    progressPct.textContent = '0%';
+    statusBadge.classList.remove('error');
+    downloadBtn.disabled = true;
+    if (currentResultUrl) URL.revokeObjectURL(currentResultUrl);
+    currentResultUrl = null;
+  }
+</script>
+</body>
+</html>
