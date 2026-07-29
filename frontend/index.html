@@ -55,8 +55,7 @@
   .progress-track{flex:1; height:6px; background:#eceae3; border-radius:99px; overflow:hidden;}
   .progress-fill{height:100%; background:var(--accent); width:0%; transition:width .2s ease;}
 
-  .images{display:grid; grid-template-columns:minmax(0, 1fr); gap:16px; margin-top:20px;}
-  .images.has-result{grid-template-columns:repeat(2, minmax(0, 1fr));}
+  .images{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:20px;}
   .images figure{margin:0;}
   .images img{width:100%; border-radius:8px; border:1px solid var(--line); display:block; background:#eee;}
   figcaption{font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#8a877c; margin-top:6px;}
@@ -102,7 +101,7 @@
         <img id="beforeImg" alt="Исходное изображение" />
         <figcaption>Исходное</figcaption>
       </figure>
-      <figure id="resultFigure" hidden>
+      <figure>
         <img id="afterImg" alt="Результат обработки" />
         <figcaption>Результат</figcaption>
       </figure>
@@ -131,7 +130,6 @@
   const imagesBlock = document.getElementById('images');
   const beforeImg = document.getElementById('beforeImg');
   const afterImg = document.getElementById('afterImg');
-  const resultFigure = document.getElementById('resultFigure');
   const actions = document.getElementById('actions');
   const downloadBtn = document.getElementById('downloadBtn');
   const cancelBtn = document.getElementById('cancelBtn');
@@ -202,8 +200,6 @@
     const blob = await api.getResult(taskId);
     currentResultUrl = URL.createObjectURL(blob);
     afterImg.src = currentResultUrl;
-    resultFigure.hidden = false;
-    imagesBlock.classList.add('has-result');
     downloadBtn.disabled = false;
     cancelBtn.disabled = true;
   }
@@ -227,9 +223,6 @@
     progressPct.textContent = '0%';
     statusBadge.classList.remove('error');
     downloadBtn.disabled = true;
-    afterImg.removeAttribute('src');
-    resultFigure.hidden = true;
-    imagesBlock.classList.remove('has-result');
     if (currentResultUrl) URL.revokeObjectURL(currentResultUrl);
     currentResultUrl = null;
   }
