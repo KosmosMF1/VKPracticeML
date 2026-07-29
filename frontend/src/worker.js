@@ -165,13 +165,21 @@ function analyzeImageQuality(imageData) {
     clamp((0.12 - contrast) / 0.08, 0, 1),
     clamp((contrast - 0.36) / 0.12, 0, 1)
   );
-  const clippingProblem = clamp((darkPixels / n + lightPixels / n - 0.16) / 0.28, 0, 1);
+  const darkRatio = darkPixels / n;
+  const lightRatio = lightPixels / n;
+  const clippingProblem = clamp((darkRatio + lightRatio - 0.16) / 0.28, 0, 1);
+
+  // Белые карточки, сканы и логотипы часто имеют намеренно белый фон и
+  // контрастные детали. Это не пересвет: глобальная коррекция только портит
+  // такой контент, поэтому распознаём его отдельно.
+  const isWhiteBackground = lightRatio > 0.55 && darkRatio > 0.005;
 
   return {
     meanBrightness,
     meanSaturation,
     contrast,
     severity: Math.max(brightnessProblem, contrastProblem, clippingProblem),
+    isWhiteBackground,
   };
 }
 
@@ -184,6 +192,10 @@ function heuristicCoefficients(quality) {
 }
 
 function adaptCoefficients(prediction, quality) {
+  if (quality.isWhiteBackground) {
+    return { brightness: 1, contrast: 1, saturation: 1 };
+  }
+
   const heuristic = heuristicCoefficients(quality);
 
   // На нормальном фото применяется 25% поправки. Чем очевиднее дефект,
